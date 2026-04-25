@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package market.v1;
+
+option go_package = "github.com/0himera/cryptalize/collector-go/internal/proto/market/v1;marketv1";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared enumerations
+// ─────────────────────────────────────────────────────────────────────────────
+
+// BuySell represents the aggressor side of a trade.
+enum BuySell {
+  BUY_SELL_UNSPECIFIED = 0;
+  BUY_SELL_BUY         = 1;
+  BUY_SELL_SELL        = 2;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core market-data messages
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Trade represents a single executed trade on an exchange.
+//
+// Prices and quantities are serialised as strings to preserve full decimal
+// precision (avoid IEEE-754 rounding). Downstream consumers (ClickHouse)
+// parse them into Decimal128 / Float64 as appropriate.
+message Trade {
+  // Unique, time-ordered identifier for this event (UUID v7).
+  string event_id = 1;
+
+  // Exchange-assigned trade identifier (may be empty on some venues).
+  string exchange_trade_id = 2;
+
+  // Originating exchange (e.g. "binance", "kraken").
+  string exchange = 3;
+
+  // Trading pair in canonical form, e.g. "BTC/USDT".
+  string pair = 4;
+
+  // Execution price (decimal string, e.g. "67432.15").
+  string price = 5;
+
+  // Executed quantity (decimal string, e.g. "0.00423").
+  string quantity = 6;
+
+  // Aggressor side.
+  BuySell side = 7;
+
+  // Exchange-reported trade timestamp in Unix microseconds.
+  // Microsecond precision maps directly to ClickHouse DateTime64(6).
+  int64 timestamp_us = 8;
+}
+
+// PriceLevel represents a single row in an order book (price + quantity).
+message PriceLevel {
+  // Price of this level (decimal string).
+  string price = 1;
+
+  // Quantity available at this level.
+  // A value of "0" signals removal of the level.
+  string quantity = 2;
+}
+
+// OrderBookUpdate carries an incremental delta for one side of the order book.
+// Consumers apply these deltas sequentially to maintain a local order book.
+message OrderBookUpdate {
+  // Unique, time-ordered identifier for this event (UUID v7).
+  string event_id = 1;
+
+  // Originating exchange.
+  string exchange = 2;
+
+  // Trading pair in canonical form.
+  string pair = 3;
+
+  // Exchange-assigned sequence number for ordering deltas.
+  // Zero if the exchange does not provide one.
+  int64 sequence = 4;
+
+  // Updated bid levels (buy side).
+  repeated PriceLevel bids = 5;
+
+  // Updated ask levels (sell side).
+  repeated PriceLevel asks = 6;
+
+  // Exchange-reported update timestamp in Unix microseconds.
+  int64 timestamp_us = 7;
+}
+
+// Ticker carries the 24-hour rolling statistics for a trading pair.
+message Ticker {
+  // Unique, time-ordered identifier for this event (UUID v7).
+  string event_id = 1;
+
+  // Originating exchange.
+  string exchange = 2;
+
+  // Trading pair in canonical form.
+  string pair = 3;
+
+  // Opening price of the 24 h window (decimal string).
+  string open = 4;
+
+  // Highest price in the 24 h window (decimal string).
+  string high = 5;
+
+  // Lowest price in the 24 h window (decimal string).
+  string low = 6;
+
+  // Last traded price (decimal string).
+  string close = 7;
+
+  // Base-asset volume traded in the 24 h window (decimal string).
+  string volume = 8;
+
+  // Quote-asset volume traded in the 24 h window (decimal string).
+  string quote_volume = 9;
+
+  // Snapshot timestamp in Unix microseconds.
+  int64 timestamp_us = 10;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Kafka envelope
+// ─────────────────────────────────────────────────────────────────────────────
+
+// MarketEvent is the top-level message published to the "market.events" topic.
+// Each record is exactly one of the concrete market-data types, wrapped here
+// so that a single topic + schema can carry the full stream.
+message MarketEvent {
+  oneof payload {
+    Trade            trade             = 1;
+    OrderBookUpdate  order_book_update = 2;
+    Ticker           ticker            = 3;
+  }
+}
