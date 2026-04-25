@@ -16,6 +16,7 @@ import (
 	"github.com/0himera/cryptalize/collector-go/internal/infra/kafka"
 	"github.com/0himera/cryptalize/collector-go/internal/protocol/grpcapi"
 	collectorv1 "github.com/0himera/cryptalize/collector-go/internal/proto/collector/v1"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"net"
 )
@@ -34,9 +35,11 @@ func main() {
 	}
 	defer publisher.Close()
 
+	snapshots := market.NewSnapshotStore()
+
 	// 2. Initialize Collectors
-	binanceCollector := binance.NewCollector(publisher, idGen)
-	krakenCollector := kraken.NewCollector(publisher, idGen)
+	binanceCollector := binance.NewCollector(publisher, idGen, snapshots)
+	krakenCollector := kraken.NewCollector(publisher, idGen, snapshots)
 
 	// 3. Subscribe to Pairs
 	for _, pair := range cfg.BinancePairs {
@@ -70,7 +73,7 @@ func main() {
 	})
 	collectorv1.RegisterCollectorServiceServer(grpcSrv, collectorSrv)
 
-	grpcAddr := ":9090"
+	grpcAddr := ":9001"
 	lis, err := net.Listen("tcp", grpcAddr)
 	if err != nil {
 		log.Fatalf("Failed to listen for gRPC: %v", err)
@@ -86,13 +89,28 @@ func main() {
 	// 6. Start HTTP Server (for health checks / metrics)
 	srv := http.Server{
 		Addr:    ":8000",
-		Handler: buildHTTPHandler(),
+		Handler: buildHTTPHandler(snapshots),
 	}
 
 	go func() {
 		log.Printf("Running HTTP server on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server failed: %v", err)
+		}
+	}()
+
+	// 7. Start Prometheus Metrics Server (Internal port :9100)
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsSrv := http.Server{
+		Addr:    ":9100",
+		Handler: metricsMux,
+	}
+
+	go func() {
+		log.Printf("Running Prometheus metrics server on %s", metricsSrv.Addr)
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("Metrics server failed: %v", err)
 		}
 	}()
 
@@ -105,5 +123,6 @@ func main() {
 	cancel() // Stop collectors
 	grpcSrv.GracefulStop()
 	srv.Shutdown(context.Background())
+	metricsSrv.Shutdown(context.Background())
 	log.Println("Shutdown complete.")
 }

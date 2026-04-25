@@ -9,7 +9,9 @@ import (
 
 	"github.com/0himera/cryptalize/collector-go/internal/domains"
 	"github.com/0himera/cryptalize/collector-go/internal/domains/market"
+	"github.com/0himera/cryptalize/collector-go/internal/infra/metrics"
 	"nhooyr.io/websocket"
+	"time"
 )
 
 const binanceBaseURL = "wss://stream.binance.com:9443/stream"
@@ -22,6 +24,7 @@ type combinedMessage struct {
 type Collector struct {
 	publisher market.Publisher
 	idGen     domains.IDGenerator
+	snapshots *market.SnapshotStore
 	
 	mu            sync.RWMutex
 	subscriptions map[string]struct{}
@@ -29,10 +32,11 @@ type Collector struct {
 	conn *websocket.Conn
 }
 
-func NewCollector(pub market.Publisher, idGen domains.IDGenerator) *Collector {
+func NewCollector(pub market.Publisher, idGen domains.IDGenerator, snapshots *market.SnapshotStore) *Collector {
 	return &Collector{
 		publisher:     pub,
 		idGen:         idGen,
+		snapshots:     snapshots,
 		subscriptions: make(map[string]struct{}),
 	}
 }
@@ -82,11 +86,18 @@ func (c *Collector) runOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "")
+	defer func() {
+		conn.Close(websocket.StatusNormalClosure, "")
+		metrics.WSConnected.WithLabelValues("binance").Set(0)
+		c.snapshots.SetConnStatus("binance", false)
+	}()
 	
 	c.mu.Lock()
 	c.conn = conn
 	log.Printf("Connected to Binance WebSocket (Combined Stream)")
+	metrics.WSConnected.WithLabelValues("binance").Set(1)
+	metrics.WSReconnectsTotal.WithLabelValues("binance").Inc()
+	c.snapshots.SetConnStatus("binance", true)
 	for symbol := range c.subscriptions {
 		if err := c.sendSubscription(ctx, symbol, "SUBSCRIBE"); err != nil {
 			c.mu.Unlock()
@@ -106,25 +117,30 @@ func (c *Collector) runOnce(ctx context.Context) error {
 			continue
 		}
 		
-		if combined.Stream != "" {
-			log.Printf("Received binance message on stream: %s. Data: %s", combined.Stream, string(combined.Data))
-		}
+		metrics.WSMessagesTotal.WithLabelValues("binance", "raw").Inc()
 
 		eventID := c.idGen.NewID()
+		start := time.Now()
 		
 		// Handle Trades
 		trade, errTrade := NormalizeTrade(combined.Data, eventID)
 		if errTrade == nil {
+			metrics.WSMessagesTotal.WithLabelValues("binance", "trade").Inc()
 			log.Printf("Publishing binance trade: %s", trade.Pair)
 			c.publisher.Publish(ctx, market.Event{Trade: &trade})
+			c.snapshots.UpdateTrade(&trade)
+			metrics.WSProcessingDuration.WithLabelValues("binance", "trade").Observe(time.Since(start).Seconds())
 			continue
 		}
 
 		// Handle Tickers
 		ticker, errTicker := NormalizeTicker(combined.Data, eventID)
 		if errTicker == nil {
+			metrics.WSMessagesTotal.WithLabelValues("binance", "ticker").Inc()
 			log.Printf("Publishing binance ticker: %s", ticker.Pair)
 			c.publisher.Publish(ctx, market.Event{Ticker: &ticker})
+			c.snapshots.UpdateTicker(&ticker)
+			metrics.WSProcessingDuration.WithLabelValues("binance", "ticker").Observe(time.Since(start).Seconds())
 			continue
 		}
 		

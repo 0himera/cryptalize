@@ -8,7 +8,9 @@ import (
 
 	"github.com/0himera/cryptalize/collector-go/internal/domains"
 	"github.com/0himera/cryptalize/collector-go/internal/domains/market"
+	"github.com/0himera/cryptalize/collector-go/internal/infra/metrics"
 	"nhooyr.io/websocket"
+	"time"
 )
 
 const krakenBaseURL = "wss://ws.kraken.com/v2"
@@ -16,6 +18,7 @@ const krakenBaseURL = "wss://ws.kraken.com/v2"
 type Collector struct {
 	publisher market.Publisher
 	idGen     domains.IDGenerator
+	snapshots *market.SnapshotStore
 
 	mu            sync.RWMutex
 	subscriptions []string
@@ -23,10 +26,11 @@ type Collector struct {
 	conn *websocket.Conn
 }
 
-func NewCollector(pub market.Publisher, idGen domains.IDGenerator) *Collector {
+func NewCollector(pub market.Publisher, idGen domains.IDGenerator, snapshots *market.SnapshotStore) *Collector {
 	return &Collector{
 		publisher: pub,
 		idGen:     idGen,
+		snapshots: snapshots,
 	}
 }
 
@@ -79,11 +83,18 @@ func (c *Collector) runOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "")
+	defer func() {
+		conn.Close(websocket.StatusNormalClosure, "")
+		metrics.WSConnected.WithLabelValues("kraken").Set(0)
+		c.snapshots.SetConnStatus("kraken", false)
+	}()
 
 	c.mu.Lock()
 	c.conn = conn
 	log.Printf("Connected to Kraken WebSocket")
+	metrics.WSConnected.WithLabelValues("kraken").Set(1)
+	metrics.WSReconnectsTotal.WithLabelValues("kraken").Inc()
+	c.snapshots.SetConnStatus("kraken", true)
 	if len(c.subscriptions) > 0 {
 		if err := c.sendSubscription(ctx, c.subscriptions, "subscribe"); err != nil {
 			c.mu.Unlock()
@@ -98,19 +109,25 @@ func (c *Collector) runOnce(ctx context.Context) error {
 			return err
 		}
 
+		metrics.WSMessagesTotal.WithLabelValues("kraken", "raw").Inc()
 		eventID := c.idGen.NewID()
+		start := time.Now()
+		
 		trades, err := NormalizeTrade(message, eventID)
 		if err != nil {
 			// Skip heartbeat or other messages
 			continue
 		}
 
+		metrics.WSMessagesTotal.WithLabelValues("kraken", "trade").Inc()
 		for _, t := range trades {
 			err = c.publisher.Publish(ctx, market.Event{Trade: &t})
 			if err != nil {
 				log.Printf("Failed to publish kraken trade: %v", err)
 			}
+			c.snapshots.UpdateTrade(&t)
 		}
+		metrics.WSProcessingDuration.WithLabelValues("kraken", "trade").Observe(time.Since(start).Seconds())
 	}
 }
 

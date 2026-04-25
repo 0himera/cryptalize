@@ -6,9 +6,11 @@ import (
 	"log"
 
 	"github.com/0himera/cryptalize/collector-go/internal/domains/market"
+	"github.com/0himera/cryptalize/collector-go/internal/infra/metrics"
 	marketv1 "github.com/0himera/cryptalize/collector-go/internal/proto/market/v1"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"google.golang.org/protobuf/proto"
+	"time"
 )
 
 type Publisher struct {
@@ -100,11 +102,18 @@ func (p *Publisher) Publish(ctx context.Context, event market.Event) error {
 
 	// We use ProduceSync for simplicity in this initial phase.
 	// In production, we'd use asynchronous producing with callbacks for performance.
+	start := time.Now()
 	results := p.client.ProduceSync(ctx, record)
+	duration := time.Since(start).Seconds()
+	
+	metrics.KafkaPublishDuration.WithLabelValues(p.topic).Observe(duration)
+
 	if err := results.FirstErr(); err != nil {
+		metrics.KafkaPublishTotal.WithLabelValues(p.topic, "error").Inc()
 		return fmt.Errorf("failed to produce kafka record: %w", err)
 	}
 
+	metrics.KafkaPublishTotal.WithLabelValues(p.topic, "success").Inc()
 	return nil
 }
 
