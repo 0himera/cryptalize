@@ -83,6 +83,7 @@ func (c *Collector) runOnce(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.conn = conn
+	log.Printf("Connected to Kraken WebSocket")
 	if len(c.subscriptions) > 0 {
 		if err := c.sendSubscription(ctx, c.subscriptions, "subscribe"); err != nil {
 			c.mu.Unlock()

@@ -84,6 +84,7 @@ func (c *Collector) runOnce(ctx context.Context) error {
 	
 	c.mu.Lock()
 	c.conn = conn
+	log.Printf("Connected to Binance WebSocket")
 	// Re-subscribe to existing pairs
 	for symbol := range c.subscriptions {
 		if err := c.sendSubscription(ctx, symbol, "SUBSCRIBE"); err != nil {

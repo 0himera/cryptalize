@@ -31,6 +31,7 @@ func NewPublisher(brokers []string, topic string) (*Publisher, error) {
 }
 
 func (p *Publisher) Publish(ctx context.Context, event market.Event) error {
+	// log.Printf("Publishing event to topic %s", p.topic)
 	var protoEvent marketv1.MarketEvent
 
 	if event.Trade != nil {
