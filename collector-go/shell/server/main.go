@@ -9,10 +9,15 @@ import (
 	"syscall"
 
 	"github.com/0himera/cryptalize/collector-go/internal/app"
+	"github.com/0himera/cryptalize/collector-go/internal/domains/market"
 	"github.com/0himera/cryptalize/collector-go/internal/infra"
 	"github.com/0himera/cryptalize/collector-go/internal/infra/exchange/binance"
 	"github.com/0himera/cryptalize/collector-go/internal/infra/exchange/kraken"
 	"github.com/0himera/cryptalize/collector-go/internal/infra/kafka"
+	"github.com/0himera/cryptalize/collector-go/internal/protocol/grpcapi"
+	collectorv1 "github.com/0himera/cryptalize/collector-go/internal/proto/collector/v1"
+	"google.golang.org/grpc"
+	"net"
 )
 
 func main() {
@@ -57,7 +62,28 @@ func main() {
 		}
 	}()
 
-	// 5. Start HTTP Server (for health checks / metrics)
+	// 5. Start gRPC Server
+	grpcSrv := grpc.NewServer()
+	collectorSrv := grpcapi.NewCollectorServer(map[string]market.Collector{
+		"binance": binanceCollector,
+		"kraken":  krakenCollector,
+	})
+	collectorv1.RegisterCollectorServiceServer(grpcSrv, collectorSrv)
+
+	grpcAddr := ":9090"
+	lis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		log.Fatalf("Failed to listen for gRPC: %v", err)
+	}
+
+	go func() {
+		log.Printf("Running gRPC server on %s", grpcAddr)
+		if err := grpcSrv.Serve(lis); err != nil {
+			log.Printf("gRPC server exited: %v", err)
+		}
+	}()
+
+	// 6. Start HTTP Server (for health checks / metrics)
 	srv := http.Server{
 		Addr:    ":8000",
 		Handler: buildHTTPHandler(),
@@ -77,6 +103,7 @@ func main() {
 
 	log.Println("Shutting down...")
 	cancel() // Stop collectors
+	grpcSrv.GracefulStop()
 	srv.Shutdown(context.Background())
 	log.Println("Shutdown complete.")
 }

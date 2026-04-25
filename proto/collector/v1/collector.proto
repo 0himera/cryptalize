@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package collector.v1;
+
+option go_package = "github.com/0himera/cryptalize/collector-go/internal/proto/collector/v1;collectorv1";
+
+// CollectorService allows remote control of the market data ingestion pipeline.
+service CollectorService {
+  // Subscribe adds a new trading pair to the active collection list.
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+
+  // Unsubscribe removes a trading pair from the active collection list.
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+}
+
+message SubscribeRequest {
+  // The exchange to subscribe to (e.g., "binance", "kraken").
+  string exchange = 1;
+  // The canonical pair to subscribe to (e.g., "BTC/USDT").
+  string pair = 2;
+}
+
+message SubscribeResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message UnsubscribeRequest {
+  string exchange = 1;
+  string pair = 2;
+}
+
+message UnsubscribeResponse {
+  bool success = 1;
+  string message = 2;
+}
