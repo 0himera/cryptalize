@@ -40,6 +40,29 @@ services:
     volumes:
       - ./proto:/var/lib/clickhouse/format_schemas
       - ./clickhouse/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cryptalize_net
+
+  brain:
+    build: ./api-py
+    container_name: cryptalize-brain
+    ports:
+      - "8001:8000"
+    environment:
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - cryptalize_net
 
   # Relational Database (OLTP)
   postgres:

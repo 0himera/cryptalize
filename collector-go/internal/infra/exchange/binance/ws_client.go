@@ -12,7 +12,12 @@ import (
 	"nhooyr.io/websocket"
 )
 
-const binanceBaseURL = "wss://stream.binance.com:9443/ws"
+const binanceBaseURL = "wss://stream.binance.com:9443/stream"
+
+type combinedMessage struct {
+	Stream string          `json:"stream"`
+	Data   json.RawMessage `json:"data"`
+}
 
 type Collector struct {
 	publisher market.Publisher
@@ -36,8 +41,6 @@ func (c *Collector) Subscribe(ctx context.Context, pair string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	
-	// Binance symbols are uppercase and no slash: BTC/USDT -> BTCUSDT
-	// This is a simplification; a real implementation would use a mapper.
 	symbol := formatSymbol(pair)
 	c.subscriptions[symbol] = struct{}{}
 	
@@ -69,7 +72,6 @@ func (c *Collector) Run(ctx context.Context) error {
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
-				// Exponential backoff could be added here
 			}
 		}
 	}
@@ -84,8 +86,7 @@ func (c *Collector) runOnce(ctx context.Context) error {
 	
 	c.mu.Lock()
 	c.conn = conn
-	log.Printf("Connected to Binance WebSocket")
-	// Re-subscribe to existing pairs
+	log.Printf("Connected to Binance WebSocket (Combined Stream)")
 	for symbol := range c.subscriptions {
 		if err := c.sendSubscription(ctx, symbol, "SUBSCRIBE"); err != nil {
 			c.mu.Unlock()
@@ -100,25 +101,54 @@ func (c *Collector) runOnce(ctx context.Context) error {
 			return err
 		}
 
+		var combined combinedMessage
+		if err := json.Unmarshal(message, &combined); err != nil {
+			continue
+		}
+		
+		if combined.Stream != "" {
+			log.Printf("Received binance message on stream: %s. Data: %s", combined.Stream, string(combined.Data))
+		}
+
 		eventID := c.idGen.NewID()
-		trade, err := NormalizeTrade(message, eventID)
-		if err != nil {
-			// Some messages might not be trades (e.g., subscription confirmation)
+		
+		// Handle Trades
+		trade, errTrade := NormalizeTrade(combined.Data, eventID)
+		if errTrade == nil {
+			log.Printf("Publishing binance trade: %s", trade.Pair)
+			c.publisher.Publish(ctx, market.Event{Trade: &trade})
 			continue
 		}
 
-		err = c.publisher.Publish(ctx, market.Event{Trade: &trade})
-		if err != nil {
-			log.Printf("Failed to publish binance trade: %v", err)
+		// Handle Tickers
+		ticker, errTicker := NormalizeTicker(combined.Data, eventID)
+		if errTicker == nil {
+			log.Printf("Publishing binance ticker: %s", ticker.Pair)
+			c.publisher.Publish(ctx, market.Event{Ticker: &ticker})
+			continue
 		}
+		
+		// If we reached here, both failed. Let's see why if it's a known stream.
+		if combined.Stream != "" {
+			var m map[string]interface{}
+			json.Unmarshal(combined.Data, &m)
+			log.Printf("Normalization failed for stream %s. TradeErr: %v, TickerErr: %v. Raw types: E=%T, s=%T, p=%T", 
+				combined.Stream, errTrade, errTicker, m["E"], m["s"], m["p"])
+		}
+		
+		// Log unknown messages to help debug
+		// log.Printf("Unknown binance message on stream %s", combined.Stream)
 	}
 }
 
 func (c *Collector) sendSubscription(ctx context.Context, symbol string, method string) error {
 	payload := map[string]interface{}{
 		"method": method,
-		"params": []string{fmt.Sprintf("%s@trade", symbol)},
-		"id":     1,
+		"params": []string{
+			fmt.Sprintf("%s@trade", symbol),
+			fmt.Sprintf("%s@ticker", symbol),
+		},
+		"id": 1,
 	}
 	data, _ := json.Marshal(payload)
 	return c.conn.Write(ctx, websocket.MessageText, data)
