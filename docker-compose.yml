@@ -87,8 +87,24 @@ services:
     ports:
       - "6379:6379"
 
+  # Monitoring & Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cryptalize-prometheus
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - promdata:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    ports:
+      - "9090:9090"
+    networks:
+      - cryptalize_net
+
 volumes:
   pgdata:
+  promdata:
 
 networks:
   cryptalize_net:
