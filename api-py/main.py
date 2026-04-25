@@ -175,7 +175,7 @@ async def get_ohlcv(
         ))
     return candles
 
-@app.get("/analytics/vwap/{exchange}/{pair}", response_model=VWAPResponse)
+@app.get("/analytics/vwap/{exchange}/{pair:path}", response_model=VWAPResponse)
 async def get_vwap(exchange: str, pair: str):
     # Daily Cumulative VWAP
     query = """
@@ -195,17 +195,34 @@ async def get_vwap(exchange: str, pair: str):
         timestamp=datetime.now()
     )
 
-@app.get("/analytics/spread/{exchange}/{pair}", response_model=SpreadResponse)
+@app.get("/analytics/spread/{exchange}/{pair:path}", response_model=SpreadResponse)
 async def get_spread(exchange: str, pair: str):
-    query = """
-        SELECT 
-            maxIf(toFloat64(price), side = 'BID') as best_bid,
-            minIf(toFloat64(price), side = 'ASK') as best_ask
-        FROM market.order_books
-        FINAL
-        WHERE exchange = %s AND pair = %s AND quantity > 0
-    """
-    result = client.query(query, [exchange, pair])
+    if exchange == "binance":
+        # Binance partial depth (@depth20) sends full snapshots of the top 20 levels.
+        # We must only look at the latest sequence to avoid stale levels.
+        query = """
+            WITH (SELECT max(sequence) FROM market.order_books WHERE exchange = %s AND pair = %s) as last_seq
+            SELECT 
+                maxIf(toFloat64(price), side = 'BID') as best_bid,
+                minIf(toFloat64(price), side = 'ASK') as best_ask
+            FROM market.order_books
+            FINAL
+            WHERE exchange = %s AND pair = %s AND sequence = last_seq AND quantity > 0
+        """
+        result = client.query(query, [exchange, pair, exchange, pair])
+    else:
+        # Kraken and others send incremental deltas (with qty=0 for deletions).
+        # We must look across all sequences and rely on ReplacingMergeTree (FINAL) to give us the current state.
+        query = """
+            SELECT 
+                maxIf(toFloat64(price), side = 'BID') as best_bid,
+                minIf(toFloat64(price), side = 'ASK') as best_ask
+            FROM market.order_books
+            FINAL
+            WHERE exchange = %s AND pair = %s AND quantity > 0
+              AND timestamp_us > now() - INTERVAL 30 SECOND
+        """
+        result = client.query(query, [exchange, pair])
     if not result.result_rows or result.result_rows[0][0] is None or result.result_rows[0][1] is None:
         raise HTTPException(status_code=404, detail="Order book data not found")
     
@@ -224,12 +241,69 @@ async def get_spread(exchange: str, pair: str):
         spread_bps=bps
     )
 
-@app.get("/analytics/summary/{exchange}/{pair}")
+@app.get("/analytics/imbalance/{exchange}/{pair:path}", response_model=ImbalanceResponse)
+async def get_imbalance(exchange: str, pair: str, depth: int = 10):
+    # Imbalance = Sum(BidQty) / (Sum(BidQty) + Sum(AskQty))
+    # 0.5 is neutral. > 0.5 is bullish (more buy pressure). < 0.5 is bearish.
+    query = """
+        SELECT 
+            side, sum(toFloat64(quantity)) as total_qty
+        FROM (
+            SELECT side, price, quantity
+            FROM market.order_books
+            FINAL
+            WHERE exchange = %s AND pair = %s AND quantity > 0
+            ORDER BY price DESC
+            LIMIT %s  -- This is tricky because we need top N per side. 
+                      -- For simplicity we'll just take everything in the partial snapshot
+        )
+        GROUP BY side
+    """
+    if exchange == "binance":
+        # Ratio for latest available snapshot
+        query = """
+            WITH (SELECT max(sequence) FROM market.order_books WHERE exchange = %s AND pair = %s) as last_seq
+            SELECT 
+                sumIf(toFloat64(quantity), side = 'BID') as bid_vol,
+                sumIf(toFloat64(quantity), side = 'ASK') as ask_vol
+            FROM market.order_books
+            FINAL
+            WHERE exchange = %s AND pair = %s AND sequence = last_seq AND quantity > 0
+        """
+        result = client.query(query, [exchange, pair, exchange, pair])
+    else:
+        # Ratio across all active levels
+        query = """
+            SELECT 
+                sumIf(toFloat64(quantity), side = 'BID') as bid_vol,
+                sumIf(toFloat64(quantity), side = 'ASK') as ask_vol
+            FROM market.order_books
+            FINAL
+            WHERE exchange = %s AND pair = %s AND quantity > 0
+              AND timestamp_us > now() - INTERVAL 30 SECOND
+        """
+        result = client.query(query, [exchange, pair])
+    if not result.result_rows or result.result_rows[0][0] is None:
+        return ImbalanceResponse(exchange=exchange, pair=pair, imbalance_ratio=0.5)
+    
+    bid_vol = result.result_rows[0][0]
+    ask_vol = result.result_rows[0][1]
+    total = bid_vol + ask_vol
+    ratio = bid_vol / total if total > 0 else 0.5
+    
+    return ImbalanceResponse(
+        exchange=exchange,
+        pair=pair,
+        imbalance_ratio=ratio
+    )
+
+@app.get("/analytics/summary/{exchange}/{pair:path}")
 async def get_summary(exchange: str, pair: str):
     # This combines multiple metrics into one call for the UI
     try:
         spread = await get_spread(exchange, pair)
         vwap = await get_vwap(exchange, pair)
+        imbalance = await get_imbalance(exchange, pair)
         
         # Get last 24h change and volume
         query = """
@@ -247,6 +321,7 @@ async def get_summary(exchange: str, pair: str):
             "pair": pair,
             "spread": spread,
             "vwap": vwap.vwap,
+            "imbalance": imbalance.imbalance_ratio,
             "timestamp": datetime.now()
         }
         

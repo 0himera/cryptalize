@@ -8,8 +8,8 @@ SELECT
     max(price) AS high,
     min(price) AS low,
     sum(quantity) AS volume,
-    sum(price * quantity) AS quote_volume,
-    sumState(CAST(price * quantity, 'Decimal(76, 36)')) AS cumulative_pv_state,
+    sum(CAST(CAST(price, 'Decimal(76, 36)') * CAST(quantity, 'Decimal(76, 36)'), 'Decimal(76, 36)')) AS quote_volume,
+    sumState(CAST(CAST(price, 'Decimal(76, 36)') * CAST(quantity, 'Decimal(76, 36)'), 'Decimal(76, 36)')) AS cumulative_pv_state,
     sumState(quantity) AS cumulative_volume_state,
     count() AS trade_count
 FROM market.trades

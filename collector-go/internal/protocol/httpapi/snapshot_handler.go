@@ -27,6 +27,12 @@ func (h *SnapshotHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(status)
 }
 
+func (h *SnapshotHandler) GetOrderBooks(w http.ResponseWriter, r *http.Request) {
+	obs := h.snapshots.GetOrderBooks()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(obs)
+}
+
 func HealthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

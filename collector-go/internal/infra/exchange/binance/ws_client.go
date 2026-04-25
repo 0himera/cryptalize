@@ -143,6 +143,19 @@ func (c *Collector) runOnce(ctx context.Context) error {
 			metrics.WSProcessingDuration.WithLabelValues("binance", "ticker").Observe(time.Since(start).Seconds())
 			continue
 		}
+
+		// Handle Order Books (Partial Depth)
+		// Note: Binance partial depth doesn't have an "e" field in the data object itself,
+		// but the stream name tells us what it is.
+		ob, errOB := NormalizeOrderBook(combined.Data, eventID, combined.Stream)
+		if errOB == nil {
+			metrics.WSMessagesTotal.WithLabelValues("binance", "depth").Inc()
+			// log.Printf("Publishing binance depth: %s", ob.Pair)
+			c.publisher.Publish(ctx, market.Event{OrderBookUpdate: &ob})
+			c.snapshots.UpdateOrderBook(&ob)
+			metrics.WSProcessingDuration.WithLabelValues("binance", "depth").Observe(time.Since(start).Seconds())
+			continue
+		}
 		
 		// If we reached here, both failed. Let's see why if it's a known stream.
 		if combined.Stream != "" {
@@ -163,6 +176,7 @@ func (c *Collector) sendSubscription(ctx context.Context, symbol string, method 
 		"params": []string{
 			fmt.Sprintf("%s@trade", symbol),
 			fmt.Sprintf("%s@ticker", symbol),
+			fmt.Sprintf("%s@depth20@100ms", symbol),
 		},
 		"id": 1,
 	}

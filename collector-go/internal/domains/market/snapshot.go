@@ -9,6 +9,7 @@ type SnapshotStore struct {
 	mu         sync.RWMutex
 	tickers    map[string]*Ticker      // key: exchange:pair
 	lastTrades map[string]*Trade       // key: exchange:pair
+	orderBooks map[string]*OrderBookUpdate // key: exchange:pair
 	connStatus map[string]bool         // key: exchange
 }
 
@@ -16,6 +17,7 @@ func NewSnapshotStore() *SnapshotStore {
 	return &SnapshotStore{
 		tickers:    make(map[string]*Ticker),
 		lastTrades: make(map[string]*Trade),
+		orderBooks: make(map[string]*OrderBookUpdate),
 		connStatus: make(map[string]bool),
 	}
 }
@@ -32,6 +34,13 @@ func (s *SnapshotStore) UpdateTrade(trade *Trade) {
 	defer s.mu.Unlock()
 	key := trade.Exchange + ":" + trade.Pair
 	s.lastTrades[key] = trade
+}
+
+func (s *SnapshotStore) UpdateOrderBook(ob *OrderBookUpdate) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := ob.Exchange + ":" + ob.Pair
+	s.orderBooks[key] = ob
 }
 
 func (s *SnapshotStore) SetConnStatus(exchange string, connected bool) {
@@ -56,6 +65,16 @@ func (s *SnapshotStore) GetStatus() map[string]bool {
 	defer s.mu.RUnlock()
 	copy := make(map[string]bool)
 	for k, v := range s.connStatus {
+		copy[k] = v
+	}
+	return copy
+}
+
+func (s *SnapshotStore) GetOrderBooks() map[string]*OrderBookUpdate {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	copy := make(map[string]*OrderBookUpdate)
+	for k, v := range s.orderBooks {
 		copy[k] = v
 	}
 	return copy

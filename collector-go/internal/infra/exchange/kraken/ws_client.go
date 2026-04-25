@@ -114,20 +114,33 @@ func (c *Collector) runOnce(ctx context.Context) error {
 		start := time.Now()
 		
 		trades, err := NormalizeTrade(message, eventID)
-		if err != nil {
-			// Skip heartbeat or other messages
+		if err == nil && trades != nil {
+			metrics.WSMessagesTotal.WithLabelValues("kraken", "trade").Inc()
+			for _, t := range trades {
+				err = c.publisher.Publish(ctx, market.Event{Trade: &t})
+				if err != nil {
+					log.Printf("Failed to publish kraken trade: %v", err)
+				}
+				c.snapshots.UpdateTrade(&t)
+			}
+			metrics.WSProcessingDuration.WithLabelValues("kraken", "trade").Observe(time.Since(start).Seconds())
 			continue
 		}
 
-		metrics.WSMessagesTotal.WithLabelValues("kraken", "trade").Inc()
-		for _, t := range trades {
-			err = c.publisher.Publish(ctx, market.Event{Trade: &t})
-			if err != nil {
-				log.Printf("Failed to publish kraken trade: %v", err)
+		// Handle Order Books
+		books, errBook := NormalizeOrderBook(message, eventID)
+		if errBook == nil && books != nil {
+			metrics.WSMessagesTotal.WithLabelValues("kraken", "depth").Inc()
+			for _, b := range books {
+				err = c.publisher.Publish(ctx, market.Event{OrderBookUpdate: &b})
+				if err != nil {
+					log.Printf("Failed to publish kraken book: %v", err)
+				}
+				c.snapshots.UpdateOrderBook(&b)
 			}
-			c.snapshots.UpdateTrade(&t)
+			metrics.WSProcessingDuration.WithLabelValues("kraken", "depth").Observe(time.Since(start).Seconds())
+			continue
 		}
-		metrics.WSProcessingDuration.WithLabelValues("kraken", "trade").Observe(time.Since(start).Seconds())
 	}
 }
 
@@ -140,5 +153,18 @@ func (c *Collector) sendSubscription(ctx context.Context, symbols []string, meth
 		},
 	}
 	data, _ := json.Marshal(payload)
-	return c.conn.Write(ctx, websocket.MessageText, data)
+	if err := c.conn.Write(ctx, websocket.MessageText, data); err != nil {
+		return err
+	}
+
+	payloadBook := map[string]interface{}{
+		"method": method,
+		"params": map[string]interface{}{
+			"channel": "book",
+			"depth":   10,
+			"symbol":  symbols,
+		},
+	}
+	dataBook, _ := json.Marshal(payloadBook)
+	return c.conn.Write(ctx, websocket.MessageText, dataBook)
 }

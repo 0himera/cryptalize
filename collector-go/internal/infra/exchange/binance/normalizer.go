@@ -3,6 +3,7 @@ package binance
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/0himera/cryptalize/collector-go/internal/domains/market"
 )
@@ -87,7 +88,7 @@ func NormalizeTrade(raw []byte, eventID string) (market.Trade, error) {
 }
 
 // NormalizeOrderBook converts a Binance depth event into the domain's OrderBookUpdate model.
-func NormalizeOrderBook(raw []byte, eventID string, symbol string) (market.OrderBookUpdate, error) {
+func NormalizeOrderBook(raw []byte, eventID string, stream string) (market.OrderBookUpdate, error) {
 	var ev depthEvent
 	if err := json.Unmarshal(raw, &ev); err != nil {
 		return market.OrderBookUpdate{}, err
@@ -95,6 +96,24 @@ func NormalizeOrderBook(raw []byte, eventID string, symbol string) (market.Order
 	seq, _ := ev.LastUpdateID.Int64()
 	if seq == 0 {
 		return market.OrderBookUpdate{}, fmt.Errorf("not a depth event")
+	}
+
+	// Extract symbol from stream name (e.g. btcusdt@depth20@100ms -> BTCUSDT)
+	symbol := ""
+	for i, r := range stream {
+		if r == '@' {
+			symbol = stream[:i]
+			break
+		}
+	}
+	// Convert to uppercase to match other events
+	symbolUpper := ""
+	for _, r := range symbol {
+		if r >= 'a' && r <= 'z' {
+			symbolUpper += string(r - ('a' - 'A'))
+		} else {
+			symbolUpper += string(r)
+		}
 	}
 
 	bids := make([]market.PriceLevel, len(ev.Bids))
@@ -109,11 +128,11 @@ func NormalizeOrderBook(raw []byte, eventID string, symbol string) (market.Order
 	return market.OrderBookUpdate{
 		EventID:     eventID,
 		Exchange:    "binance",
-		Pair:        symbol,
+		Pair:        symbolUpper,
 		Sequence:    seq,
 		Bids:        bids,
 		Asks:        asks,
-		TimestampUs: 0,
+		TimestampUs: time.Now().UnixNano() / 1000,
 	}, nil
 }
 

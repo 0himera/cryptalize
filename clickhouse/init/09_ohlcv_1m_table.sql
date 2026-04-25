@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS market.ohlcv_1m (
     high SimpleAggregateFunction(max, Decimal(38, 18)),
     low SimpleAggregateFunction(min, Decimal(38, 18)),
     volume SimpleAggregateFunction(sum, Decimal(38, 18)),
-    quote_volume SimpleAggregateFunction(sum, Decimal(38, 18)),
+    quote_volume SimpleAggregateFunction(sum, Decimal(76, 36)),
     cumulative_pv_state AggregateFunction(sum, Decimal(76, 36)),
     cumulative_volume_state AggregateFunction(sum, Decimal(38, 18)),
     trade_count SimpleAggregateFunction(sum, UInt64)

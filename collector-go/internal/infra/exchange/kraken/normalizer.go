@@ -22,6 +22,24 @@ type krakenTradeEvent struct {
 	} `json:"data"`
 }
 
+// krakenBookEvent represents the raw JSON structure from Kraken v2 book stream.
+type krakenBookEvent struct {
+	Channel string `json:"channel"`
+	Type    string `json:"type"` // "snapshot" or "update"
+	Data    []struct {
+		Symbol    string `json:"symbol"`
+		Bids      []struct {
+			Price float64 `json:"price"`
+			Qty   float64 `json:"qty"`
+		} `json:"bids"`
+		Asks []struct {
+			Price float64 `json:"price"`
+			Qty   float64 `json:"qty"`
+		} `json:"asks"`
+		Timestamp string `json:"timestamp"`
+	} `json:"data"`
+}
+
 // NormalizeTrade converts a Kraken trade event into a slice of domain Trade models.
 // Kraken can batch multiple trades in one message.
 func NormalizeTrade(raw []byte, eventID string) ([]market.Trade, error) {
@@ -61,4 +79,48 @@ func NormalizeTrade(raw []byte, eventID string) ([]market.Trade, error) {
 	}
 
 	return trades, nil
+}
+
+// NormalizeOrderBook converts a Kraken book event into a slice of domain OrderBookUpdate models.
+func NormalizeOrderBook(raw []byte, eventID string) ([]market.OrderBookUpdate, error) {
+	var ev krakenBookEvent
+	if err := json.Unmarshal(raw, &ev); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal kraken book: %w", err)
+	}
+
+	if ev.Channel != "book" || (ev.Type != "update" && ev.Type != "snapshot") {
+		return nil, nil
+	}
+
+	updates := make([]market.OrderBookUpdate, 0, len(ev.Data))
+	for _, d := range ev.Data {
+		bids := make([]market.PriceLevel, len(d.Bids))
+		for i, b := range d.Bids {
+			bids[i] = market.PriceLevel{
+				Price:    fmt.Sprintf("%.8f", b.Price),
+				Quantity: fmt.Sprintf("%.8f", b.Qty),
+			}
+		}
+		asks := make([]market.PriceLevel, len(d.Asks))
+		for i, a := range d.Asks {
+			asks[i] = market.PriceLevel{
+				Price:    fmt.Sprintf("%.8f", a.Price),
+				Quantity: fmt.Sprintf("%.8f", a.Qty),
+			}
+		}
+
+		t, _ := time.Parse(time.RFC3339Nano, d.Timestamp)
+		
+		updates = append(updates, market.OrderBookUpdate{
+			EventID:     eventID,
+			Exchange:    "kraken",
+			Pair:        d.Symbol,
+			Sequence:    t.UnixMicro(),
+			Bids:        bids,
+			Asks:        asks,
+			TimestampUs: t.UnixMicro(),
+		})
+	}
+
+	return updates, nil
 }

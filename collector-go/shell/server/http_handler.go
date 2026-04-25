@@ -21,6 +21,7 @@ func buildHTTPHandler(snapshots *market.SnapshotStore) http.Handler {
 	mux.HandleFunc("GET /healthz", httpapi.HealthzHandler)
 	mux.HandleFunc("GET /snapshot/tickers", snapshotHandler.GetTickers)
 	mux.HandleFunc("GET /snapshot/status", snapshotHandler.GetStatus)
+	mux.HandleFunc("GET /snapshot/orderbooks", snapshotHandler.GetOrderBooks)
 
 	var handler http.Handler = mux
 	handler = httpapi.RequestIDMiddleware(idGen)(handler)
