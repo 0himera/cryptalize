@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/0himera/cryptalize/collector-go/internal/domains/market"
 	marketv1 "github.com/0himera/cryptalize/collector-go/internal/proto/market/v1"
@@ -31,7 +32,7 @@ func NewPublisher(brokers []string, topic string) (*Publisher, error) {
 }
 
 func (p *Publisher) Publish(ctx context.Context, event market.Event) error {
-	// log.Printf("Publishing event to topic %s", p.topic)
+	log.Printf("Publishing event to topic %s", p.topic)
 	var protoEvent marketv1.MarketEvent
 
 	if event.Trade != nil {
