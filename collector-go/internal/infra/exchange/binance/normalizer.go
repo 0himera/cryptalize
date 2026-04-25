@@ -23,6 +23,10 @@ func NormalizeTrade(raw []byte, eventID string) (market.Trade, error) {
 	if err := json.Unmarshal(raw, &ev); err != nil {
 		return market.Trade{}, fmt.Errorf("failed to unmarshal binance trade: %w", err)
 	}
+	
+	if ev.Symbol == "" {
+		return market.Trade{}, fmt.Errorf("not a trade event")
+	}
 
 	side := market.SideBuy
 	if ev.IsBuyerMK {
