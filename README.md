@@ -245,23 +245,38 @@ message UnsubscribeResponse{ bool success = 1; string message = 2; }
 
 ---
 
-## Running Locally
+## Running the Stack
 
-### Prerequisites
-
-- Docker + Docker Compose
-- Go ≥ 1.24 (auto-toolchain will fetch 1.25 if needed)
-
-### Start the stack
+### Start everything
+The entire pipeline (Collectors, Redpanda, ClickHouse, Analytics Brain) is orchestrated via Docker Compose.
 
 ```bash
 docker compose up -d
 ```
 
-This starts Redpanda, ClickHouse (with DDL init), Postgres, Redis, Prometheus, the collector, and the brain in dependency order.
+This will:
+1. Start Redpanda (Kafka) and ClickHouse.
+2. Build and start the Go Collector (auto-fetching Go 1.25).
+3. Build and start the Python Brain (FastAPI).
+4. Start Prometheus for metrics scraping.
 
-### Run collector on host (dev)
+### Logs & Monitoring
+```bash
+# View collector logs
+docker logs -f cryptalize-collector
 
+# View analytics brain logs
+docker logs -f cryptalize-brain
+```
+
+---
+
+## Development & Debugging
+
+If you need to run a component outside of Docker for debugging:
+
+### Collector (Host mode)
+Ensure `localhost:19092` is accessible (Redpanda external port).
 ```bash
 cd collector-go
 KAFKA_BROKERS=localhost:19092 go run ./shell/server/
