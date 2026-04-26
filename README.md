@@ -2,6 +2,11 @@
 
 High-performance, multi-exchange market data pipeline and analytics API.
 
+
+<img width="1546" height="1100" alt="image" src="https://github.com/user-attachments/assets/fbc40f3e-68f5-40ef-bf33-e433de76093b" />
+
+# 
+ 
 **Data flow**: Exchange WebSocket → Go Normalizer → Protobuf → Redpanda → ClickHouse MVs → FastAPI
 
 ---
@@ -44,6 +49,10 @@ High-performance, multi-exchange market data pipeline and analytics API.
 ---
 
 ## Services
+
+<img width="1656" height="948" alt="Screenshot_20260426_190558" src="https://github.com/user-attachments/assets/7afb0ac3-36ab-4fd9-83a6-bdb85cceb319" />
+ 
+# 
 
 | Service             | Image / Build        | Ports                    | Role                                   |
 |---------------------|----------------------|--------------------------|----------------------------------------|
