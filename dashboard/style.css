@@ -318,7 +318,8 @@ header {
 }
 
 /* Animations */
-.blink { animation: blinker 1s step-end infinite; }
+.blink { animation: blinker 0.8s step-end infinite; }
+.blink-fast { animation: blinker 0.25s step-end infinite; }
 @keyframes blinker { 50% { opacity: 0; } }
 
 .alert { animation: alert-bg 0.5s step-end infinite; }

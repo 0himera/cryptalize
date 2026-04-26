@@ -51,9 +51,11 @@ async function initStatusPage() {
             
             const div = document.createElement('div');
             div.className = `service ${statusClass}`;
+            const blinkClass = statusClass === 'failure' ? 'blink-fast' : (statusClass === 'degraded' ? 'blink' : '');
+            
             div.innerHTML = `
                 <div class="service-icon">
-                    <img src="/assets/status-${statusClass}.svg" class="${statusClass !== 'operational' ? 'blink' : ''}">
+                    <img src="/assets/status-${statusClass}.svg" class="${blinkClass}">
                 </div>
                 <div class="service-info">
                     <div class="service-header">
@@ -81,6 +83,9 @@ async function initStatusPage() {
         overallText.textContent = overallStatus.toUpperCase();
         overallText.className = overallStatus === 'operational' ? 'cg' : (overallStatus === 'failure' ? 'cr' : 'cy');
         mainIcon.src = `/assets/status-${overallStatus}.svg`;
+        
+        const mainBlinkClass = overallStatus === 'failure' ? 'blink-fast' : (overallStatus === 'degraded' ? 'blink' : '');
+        mainIcon.className = mainBlinkClass;
     }
 
     refreshStatus();
