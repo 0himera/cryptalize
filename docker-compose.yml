@@ -67,6 +67,23 @@ services:
     networks:
       - cryptalize_net
 
+  collector:
+    build: ./collector-go
+    container_name: cryptalize-collector
+    ports:
+      - "9001:9001"
+      - "9100:9100"
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+      - GRPC_PORT=9001
+      - METRICS_PORT=9100
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - cryptalize_net
+
   # Relational Database (OLTP)
   postgres:
     image: postgres:16-alpine
