@@ -1,5 +1,8 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
+
+# Enable automatic toolchain downloading
+ENV GOTOOLCHAIN=auto
 
 WORKDIR /app
 
@@ -14,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Build the server
-RUN CGO_ENABLED=0 GOOS=linux go build -o collector ./shell/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o collector ./shell/server/
 
 # Run stage
 FROM alpine:latest
