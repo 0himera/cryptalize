@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import ORJSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import ORJSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import clickhouse_connect
@@ -33,6 +35,29 @@ client = clickhouse_connect.get_client(
     username=CH_USER, 
     password=CH_PASS
 )
+
+import socket
+
+def check_port(host: str, port: int, timeout: int = 1) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except:
+        return False
+
+def get_service_status(name: str, host: str, port: int, critical: bool = False):
+    up = check_port(host, port)
+    return {
+        "id": name,
+        "name": name.capitalize(),
+        "description": f"Service on {host}:{port}",
+        "link": "#",
+        "status": "UP" if up else "DOWN",
+        "critical": critical,
+        "rt": 1, # Mock RT
+        "uptime": 0.9992, # Mock Uptime
+        "checks": [0] * 60 # Mock history
+    }
 
 # --- Models ---
 
@@ -78,11 +103,89 @@ class ImbalanceResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "Cryptalize Brain is active"}
+    return FileResponse("dashboard/index.html")
+
+@app.get("/dashboard")
+async def dashboard_page():
+    return FileResponse("dashboard/dashboard.html")
+
+@app.get("/status")
+async def status_page():
+    return FileResponse("dashboard/status.html")
+
+@app.get("/api/status")
+async def get_status():
+    services = []
+    
+    # ClickHouse
+    ch_up = False
+    try:
+        client.query("SELECT 1")
+        ch_up = True
+    except:
+        pass
+    
+    services.append({
+        "id": 1,
+        "name": "ClickHouse",
+        "description": "OLAP Storage",
+        "link": "#",
+        "status": "UP" if ch_up else "DOWN",
+        "critical": True,
+        "rt": 12,
+        "uptime": 0.9998,
+        "checks": [0] * 59 + ([0] if ch_up else [2])
+    })
+    
+    # Redpanda (Kafka)
+    rp_up = check_port("redpanda", 19092)
+    services.append({
+        "id": 2,
+        "name": "Redpanda",
+        "description": "Event Streaming",
+        "link": "#",
+        "status": "UP" if rp_up else "DOWN",
+        "critical": True,
+        "rt": 5,
+        "uptime": 0.9995,
+        "checks": [0] * 59 + ([0] if rp_up else [2])
+    })
+    
+    # Collector
+    coll_up = check_port("collector", 9001)
+    services.append({
+        "id": 3,
+        "name": "Collector",
+        "description": "Go Data Ingestion",
+        "link": "#",
+        "status": "UP" if coll_up else "DOWN",
+        "critical": True,
+        "rt": 2,
+        "uptime": 0.9990,
+        "checks": [0] * 59 + ([0] if coll_up else [2])
+    })
+    
+    # Brain (Self)
+    services.append({
+        "id": 4,
+        "name": "Brain",
+        "description": "Analytics API",
+        "link": "#",
+        "status": "UP",
+        "critical": True,
+        "rt": 1,
+        "uptime": 1.0,
+        "checks": [0] * 60
+    })
+    
+    return services
+
+app.mount("/assets", StaticFiles(directory="dashboard/assets"), name="assets")
+app.mount("/static", StaticFiles(directory="dashboard"), name="static")
 
 # 1. Market Data Endpoints
 
-@app.get("/trades/{exchange}/{pair}", response_model=List[Trade])
+@app.get("/trades/{exchange}/{pair:path}", response_model=List[Trade])
 async def get_trades(exchange: str, pair: str, limit: int = 100):
     query = """
         SELECT event_id, exchange, pair, 
@@ -109,7 +212,7 @@ async def get_trades(exchange: str, pair: str, limit: int = 100):
         ))
     return trades
 
-@app.get("/orderbook/{exchange}/{pair}")
+@app.get("/orderbook/{exchange}/{pair:path}")
 async def get_orderbook(exchange: str, pair: str):
     query = """
         SELECT side, toFloat64(price), toFloat64(quantity)
@@ -138,7 +241,7 @@ async def get_orderbook(exchange: str, pair: str):
 
 # 2. Analytics Endpoints
 
-@app.get("/analytics/ohlcv/{exchange}/{pair}", response_model=List[Candle])
+@app.get("/analytics/ohlcv/{exchange}/{pair:path}", response_model=List[Candle])
 async def get_ohlcv(
     exchange: str, 
     pair: str, 
@@ -274,17 +377,16 @@ async def get_imbalance(exchange: str, pair: str, depth: int = 10):
         GROUP BY side
     """
     if exchange == "binance":
-        # Ratio for latest available snapshot
+        # Ratio for current book state using FINAL
         query = """
-            WITH (SELECT max(sequence) FROM market.order_books WHERE exchange = %s AND pair = %s) as last_seq
             SELECT 
                 sumIf(toFloat64(quantity), side = 'BID') as bid_vol,
                 sumIf(toFloat64(quantity), side = 'ASK') as ask_vol
             FROM market.order_books
             FINAL
-            WHERE exchange = %s AND pair = %s AND sequence = last_seq AND quantity > 0
+            WHERE exchange = %s AND pair = %s AND quantity > 0
         """
-        result = client.query(query, [exchange, pair, exchange, pair])
+        result = client.query(query, [exchange, pair])
     else:
         # Ratio across all active levels
         query = """
@@ -342,7 +444,7 @@ async def get_summary(exchange: str, pair: str):
         if res.result_rows and res.result_rows[0][0] is not None:
             open_24h = float(res.result_rows[0][0])
             last_price = float(res.result_rows[0][1])
-            summary["change_24h_pct"] = ((last_price - open_24h) / open_24h) * 100
+            summary["change_24h_pct"] = ((last_price - open_24h) / open_24h * 100) if open_24h > 0 else 0
             summary["volume_24h"] = float(res.result_rows[0][2])
             summary["last_price"] = last_price
             
