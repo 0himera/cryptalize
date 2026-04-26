@@ -13,8 +13,10 @@ CREATE TABLE IF NOT EXISTS market.events_queue (
     `order_book_update.pair` String,
     `order_book_update.sequence` Int64,
     `order_book_update.timestamp_us` Int64,
-    `order_book_update.bids` Array(Tuple(price String, quantity String)),
-    `order_book_update.asks` Array(Tuple(price String, quantity String)),
+    `order_book_update.bids.price` Array(String),
+    `order_book_update.bids.quantity` Array(String),
+    `order_book_update.asks.price` Array(String),
+    `order_book_update.asks.quantity` Array(String),
     
     `ticker.event_id` String,
     `ticker.exchange` String,

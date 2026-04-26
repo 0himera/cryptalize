@@ -8,7 +8,7 @@ import (
 
 func TestNormalizeTrade(t *testing.T) {
 	// Clean JSON, no extra fields, explicit types
-	raw := []byte(`{"E":1672531200000,"s":"BTCUSDT","t":12345,"p":"60000.00","q":"0.1","m":true}`)
+	raw := []byte(`{"e":"trade","E":1672531200000,"s":"BTCUSDT","t":12345,"p":"60000.00","q":"0.1","m":true}`)
 	eventID := "uuid-v7-123"
 
 	trade, err := NormalizeTrade(raw, eventID)
