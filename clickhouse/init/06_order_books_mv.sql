@@ -16,8 +16,8 @@ FROM (
         `order_book_update.sequence` AS sequence,
         fromUnixTimestamp64Micro(`order_book_update.timestamp_us`) AS timestamp_us,
         toUUIDOrDefault(`order_book_update.event_id`) AS event_id,
-        arrayMap(x -> (x.1, x.2, 1), `order_book_update.bids`) AS bids_raw,
-        arrayMap(x -> (x.1, x.2, 2), `order_book_update.asks`) AS asks_raw,
+        arrayMap((p, q) -> (p, q, 1), `order_book_update.bids.price`, `order_book_update.bids.quantity`) AS bids_raw,
+        arrayMap((p, q) -> (p, q, 2), `order_book_update.asks.price`, `order_book_update.asks.quantity`) AS asks_raw,
         arrayConcat(bids_raw, asks_raw) AS all_levels
     FROM market.events_queue
     WHERE `order_book_update.event_id` != ''
