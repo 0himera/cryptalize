@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRYPTALIZE // MAGI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .splash {
+            text-align: center;
+            animation: emerge 1s ease-out;
+        }
+        @keyframes emerge {
+            from { opacity: 0; transform: scale(0.9); filter: blur(10px); }
+            to { opacity: 1; transform: scale(1); filter: blur(0); }
+        }
+        .btn-group {
+            margin-top: 30px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        .nerv-btn {
+            background: none;
+            border: 2px solid var(--orange);
+            color: var(--orange);
+            padding: 10px 30px;
+            font-size: 18px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+        .nerv-btn:hover {
+            background: var(--orange);
+            color: #000;
+            box-shadow: 0 0 20px var(--orange);
+        }
+    </style>
+</head>
+<body>
+    <div id="crt-overlay"></div>
+    <div id="hex-grid"></div>
+
+    <div class="splash">
+        <div class="co" style="font-size: 14px; letter-spacing: 5px;">MAGI SYSTEM // NERV-01</div>
+        <h1 class="cy" style="font-size: 72px; margin: 10px 0;">CRYPTALIZE</h1>
+        <div class="cg" style="font-size: 18px;">HIGH-PERFORMANCE DATA PIPELINE</div>
+        
+        <div class="btn-group">
+            <a href="/dashboard" class="nerv-btn">Dashboard</a>
+            <a href="/status" class="nerv-btn">System Status</a>
+        </div>
+    </div>
+
+    <script>
+        // Update time if needed, though not strictly required for splash
+    </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#ff1c03" flood-opacity="0.7"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#f7a61e" flood-opacity="0.55"/>
+    </filter>
+  </defs>
+  <polygon points="40,10 70,62 10,62" fill="#f7a61e" filter="url(#glow)"/>
+</svg>
