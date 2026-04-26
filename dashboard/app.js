@@ -197,8 +197,40 @@ async function initDashboard() {
             fetchChartData(),
             fetchSummary(),
             fetchTrades(),
-            fetchOrderBook()
+            fetchOrderBook(),
+            updateTicker()
         ]);
+    }
+
+    let globalSummaries = [];
+
+    async function updateTicker() {
+        const ticker = document.getElementById('ticker-content');
+        if (!ticker) return;
+
+        try {
+            const res = await fetch('/analytics/all_summaries');
+            if (res.ok) {
+                globalSummaries = await res.json();
+            }
+        } catch (e) { console.error("Ticker fetch failed", e); }
+
+        if (globalSummaries.length === 0) return;
+
+        const messages = globalSummaries.map(s => {
+            const price = s.last_price ? s.last_price.toFixed(2) : '---';
+            const change = s.change_24h_pct ? s.change_24h_pct.toFixed(2) : '0.00';
+            const colorClass = parseFloat(change) >= 0 ? 'cg' : 'cr';
+            return `
+                <span class="co" style="margin-right: 10px;">[${s.exchange.toUpperCase()}]</span>
+                <span class="cy">${s.pair}:</span>
+                <span class="cw">${price}</span>
+                <span class="${colorClass}" style="margin-right: 40px;">(${change}%)</span>
+            `;
+        });
+        
+        // Quadruple for smooth loop
+        ticker.innerHTML = messages.join('') + messages.join('') + messages.join('') + messages.join('');
     }
 
     async function fetchSummary() {
@@ -213,6 +245,8 @@ async function initDashboard() {
                 console.warn("Summary data invalid:", data?.detail);
                 return;
             }
+            
+            lastSummaryData = data; // Store for ticker
             
             document.getElementById('last-price').textContent = data.last_price ? data.last_price.toFixed(2) : '---';
             const changeEl = document.getElementById('price-change');

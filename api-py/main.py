@@ -451,3 +451,19 @@ async def get_summary(exchange: str, pair: str):
         return summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.get("/analytics/all_summaries")
+async def get_all_summaries():
+    pairs = [
+        ("binance", "BTCUSDT"),
+        ("binance", "ETHUSDT"),
+        ("kraken", "BTC/USD"),
+        ("kraken", "ETH/USD")
+    ]
+    results = []
+    for ex, p in pairs:
+        try:
+            summary = await get_summary(ex, p)
+            results.append(summary)
+        except:
+            continue
+    return results
