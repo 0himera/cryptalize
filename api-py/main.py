@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import ORJSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import clickhouse_connect
@@ -10,6 +11,14 @@ app = FastAPI(
     title="Cryptalize Analytics API",
     default_response_class=ORJSONResponse,
     description="Streaming Analytics & Observability API"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ClickHouse Client
