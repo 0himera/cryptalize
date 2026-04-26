@@ -4,3 +4,4 @@ clickhouse-connect
 pydantic
 pydantic-settings
 python-dotenv
+orjson

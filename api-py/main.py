@@ -1,11 +1,16 @@
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import clickhouse_connect
 from datetime import datetime, timedelta
 import os
 
-app = FastAPI(title="Cryptalize Brain", description="Streaming Analytics & Observability API")
+app = FastAPI(
+    title="Cryptalize Analytics API",
+    default_response_class=ORJSONResponse,
+    description="Streaming Analytics & Observability API"
+)
 
 # ClickHouse Client
 CH_HOST = os.getenv("CLICKHOUSE_HOST", "localhost")
